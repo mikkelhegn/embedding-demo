@@ -1,0 +1,19 @@
+spin_manifest_version = "1"
+authors = ["Mikkel Mørk Hegnhøj <mikkel@fermyon.com>"]
+description = "Sample app to find relevant text in embeddings"
+name = "Feedback-ai"
+trigger = { type = "http", base = "/" }
+version = "0.1.0"
+
+[[component]]
+id = "embeddings"
+source = "embeddings/target/wasm32-wasi/release/embeddings.wasm"
+allowed_http_hosts = [ "https://api.embaas.io" ]
+sqlite_databases = ["default"]
+[component.trigger]
+route = "/embeddings/..."
+[component.build]
+command = "cargo build --target wasm32-wasi --release"
+workdir = "embeddings"
+watch = ["src/**/*.rs", "Cargo.toml"]
+

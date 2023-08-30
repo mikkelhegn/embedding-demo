@@ -1,0 +1,14 @@
+> Query API
+>> GET /match -> Data is text to match
+>>> Generate embedding for the data
+>>> GET /embeddings and compare
+>>> Return matches
+
+OK > Embeddings API
+OK >> GET /embeddings -> Gets all the embeddings form the DB
+OK >> POST /embeddings -> Generates embeddings and stores it in the DB
+OK >> DELETE /embeddings -> Deletes and embedding in the DB
+
+> Client
+1. GET /match with text as data
+
