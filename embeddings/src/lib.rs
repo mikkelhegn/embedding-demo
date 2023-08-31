@@ -2,13 +2,12 @@ use anyhow::{Context, Result};
 use env_logger;
 use log::info;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{json, Value};
 use spin_sdk::{
     http::{Params, Request, Response},
     http_component, http_router,
-    sqlite::{self, Connection},
+    sqlite::{self, Connection, ValueResult},
 };
-use std::io::Cursor;
 
 // A simple Spin HTTP component.
 #[http_component]
@@ -39,12 +38,8 @@ fn handle_embeddings(req: Request) -> Result<Response> {
 }
 
 fn get_embeddings(_req: Request, _params: Params) -> Result<Response> {
-    // Return all embeddings from SQL
-
     let query = "SELECT * FROM embeddings";
     let conn = Connection::open_default()?;
-    let result = conn.execute(query, &[])?;
-    info!("Result: {:?}", result);
     let embedding_records: Vec<Embedding> = conn
         .execute(query, &[])?
         .rows()
@@ -60,10 +55,6 @@ fn get_embeddings(_req: Request, _params: Params) -> Result<Response> {
 }
 
 fn create_embeddings(_req: Request, _params: Params) -> Result<Response> {
-    // Serialize the body of the req to Vec<embedding>
-    // Create a SQL query to search for existing and redact
-    // Submit the delta to SQL
-
     let my_embedding = Embedding {
         id: 0,
         reference: String::from("My ref"),
@@ -72,10 +63,6 @@ fn create_embeddings(_req: Request, _params: Params) -> Result<Response> {
     };
     let vec = json!(my_embedding.embedding);
     let blob = serde_json::to_vec(&vec)?;
-
-    json!(my_embedding.embedding);
-
-    // let b_vec = serde_json::from_value(vec)?;
 
     let query = "INSERT INTO embeddings (reference, text, embedding) VALUES(?, ?, ?) RETURNING id;";
     let query_params = [
@@ -113,22 +100,23 @@ impl<'a> TryFrom<sqlite::Row<'a>> for Embedding {
     type Error = anyhow::Error;
 
     fn try_from(row: sqlite::Row<'a>) -> std::result::Result<Self, Self::Error> {
-        info!("DB Row: {:?}", row.get::<&str>("embedding"));
-        info!("DB Row: {:?}", row.get::<u32>("embedding"));
         let id = row.get::<u32>("id").unwrap();
         let reference = row
             .get::<&str>("reference")
             .context("reference column is empty")?;
         let text = row.get::<&str>("text").context("text column is empty")?;
-        let embedding = row.get::<&str>("embedding").unwrap_or_default();
-        info!("Embedding from DB {:?}", embedding);
-        //let embedding: Option<Vec<f32>> = embedding.unwrap()
-        //let embedding: Vec<f32> = bincode::deserialize_from(Cursor::new(embedding))?;
+        let embedding: Vec<f32>;
+        match row.get::<&ValueResult>("embedding").unwrap() {
+            ValueResult::Blob(b) => {
+                embedding = serde_json::from_value(serde_json::from_slice(b.as_slice()).unwrap())?;
+            },
+            _ => todo!(),
+        };        
         Ok(Self {
             id,
             reference: reference.to_owned(),
             text: text.to_owned(),
-            embedding: None,
+            embedding: Some(embedding),
         })
     }
 }
