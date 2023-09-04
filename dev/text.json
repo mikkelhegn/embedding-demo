@@ -1,0 +1,12 @@
+{
+	"embeddings": [
+		{
+			"reference": "page-title.md",
+			"text": "The food was delicious"
+		},
+		{
+			"reference": "page-title-2.md",
+			"text": "The food was bad"
+		}
+	]
+}
