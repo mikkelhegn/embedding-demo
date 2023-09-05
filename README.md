@@ -6,7 +6,7 @@ The component is general-purpose in that it accepts text you want to store in th
 
 You can also call the component to compare a given text string with what's in the database already. The component will return a sorted list of text already in the database.
 
-This is still very early and experimental, but works with the new Serverless AI features in Spin and Fermyon Cloud.
+This is built ion the Serverless AI features in Spin and Fermyon Cloud.
 
 The repo contains a small client front-end to try the functionality.
 
@@ -66,3 +66,12 @@ Returns
 ### DELETE “/:id”
 
 Takes no body, but deletes an embedding from the database, based on the id in the database
+
+
+## Short video
+
+<div>
+    <a href="https://www.loom.com/share/47c883b8d48a4efa81565895b401beb1">
+      <img style="max-width:300px;" src="https://cdn.loom.com/sessions/thumbnails/47c883b8d48a4efa81565895b401beb1-with-play.gif">
+    </a>
+  </div>

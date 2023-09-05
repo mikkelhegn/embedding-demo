@@ -1,7 +1,7 @@
 spin_manifest_version = "1"
 authors = ["Mikkel Mørk Hegnhøj <mikkel@fermyon.com>"]
 description = "Sample app to find relevant text in embeddings"
-name = "Feedback-ai"
+name = "Embedding-demo"
 trigger = { type = "http", base = "/" }
 version = "0.1.0"
 
@@ -23,4 +23,4 @@ source = { url = "https://github.com/fermyon/spin-fileserver/releases/download/v
 id = "static"
 files = [ { source = "assets", destination = "/" } ]
 [component.trigger]
-route = "/static/..."
+route = "/..."

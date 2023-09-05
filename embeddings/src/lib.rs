@@ -1,8 +1,6 @@
-use std::collections::HashMap;
-
 use anyhow::{Context, Result};
 use env_logger;
-use log::{info, trace};
+use log::{info, trace, LevelFilter::Info};
 use serde::{Deserialize, Serialize};
 use serde_json::*;
 use spin_sdk::{
@@ -12,11 +10,10 @@ use spin_sdk::{
     sqlite::{self, Connection, ValueResult},
 };
 
-// A simple Spin HTTP component.
 #[http_component]
 fn handle_embeddings(req: Request) -> Result<Response> {
     env_logger::builder()
-        .filter_level(log::LevelFilter::Trace)
+        .filter_level(Info)
         .init();
 
     info!(
@@ -41,31 +38,34 @@ fn handle_embeddings(req: Request) -> Result<Response> {
 }
 
 fn get_embeddings(req: Request, _params: Params) -> Result<Response> {
-    if req.body().is_some() {
-        let query = serde_qs::from_str(req.uri().query().unwrap_or_default()).unwrap();
+    match req.uri().query().is_some() {
+        true => {
+            let query = serde_qs::from_str(req.uri().query().unwrap_or_default()).unwrap();
 
-        let result_set = get_similar(query);
+            let result_set = get_similar(query);
 
-        Ok(http::Response::builder()
-            .status(http::StatusCode::OK)
-            .header("Content-Type", "application/json")
-            .body(Some(serde_json::to_vec(&result_set.unwrap())?.into()))
-            .unwrap())
-    } else {
-        info!("In else");
-        let query = "SELECT * FROM embeddings";
-        let conn = Connection::open_default()?;
-        let embedding_records: Vec<Embedding> = conn
-            .execute(query, &[])?
-            .rows()
-            .map(|row| -> anyhow::Result<Embedding> { row.try_into() })
-            .collect::<anyhow::Result<Vec<Embedding>>>()?;
+            Ok(http::Response::builder()
+                .status(http::StatusCode::OK)
+                .header("Content-Type", "application/json")
+                .body(Some(serde_json::to_vec(&result_set.unwrap())?.into()))
+                .unwrap())
+        }
+        false => {
+            info!("In else");
+            let query = "SELECT * FROM embeddings";
+            let conn = Connection::open_default()?;
+            let embedding_records: Vec<Embedding> = conn
+                .execute(query, &[])?
+                .rows()
+                .map(|row| -> anyhow::Result<Embedding> { row.try_into() })
+                .collect::<anyhow::Result<Vec<Embedding>>>()?;
 
-        info!("Rows: {:?}", embedding_records);
-        Ok(http::Response::builder()
-            .status(http::StatusCode::OK)
-            .body(Some(serde_json::to_string(&embedding_records)?.into()))
-            .unwrap())
+            trace!("Rows: {:?}", embedding_records);
+            Ok(http::Response::builder()
+                .status(http::StatusCode::OK)
+                .body(Some(serde_json::to_string(&embedding_records)?.into()))
+                .unwrap())
+        }
     }
 }
 
@@ -107,7 +107,7 @@ fn generate_and_store_embedding(embedding_req: EmbeddingRequest) -> Result<Vec<E
     let text: Vec<&str> = embeddings.iter().map(|t| t.text.as_str()).collect();
     let embedding_result = generate_embeddings(AllMiniLmL6V2, &text[..]).unwrap();
 
-    info!("Generated embeddings: {:?}", embedding_result);
+    trace!("Generated embeddings: {:?}", embedding_result);
 
     let conn = Connection::open_default()?;
 
@@ -132,16 +132,8 @@ fn generate_and_store_embedding(embedding_req: EmbeddingRequest) -> Result<Vec<E
             trace!("Result: {:?}", result);
         }
     }
-    // Some error handling hnd return somethign meaningful..
+    // Some error handling needed...
     Ok(embeddings)
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-struct Embedding {
-    id: Option<u32>,
-    reference: Option<String>,
-    text: String,
-    embedding: Option<Vec<f32>>,
 }
 
 impl<'a> TryFrom<sqlite::Row<'a>> for Embedding {
@@ -217,10 +209,18 @@ fn cosine_similarity(vec1: &[f32], vec2: &[f32]) -> f32 {
     dot_product / (norm1 * norm2)
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct Embedding {
+    id: Option<u32>,
+    reference: Option<String>,
+    text: String,
+    embedding: Option<Vec<f32>>,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 struct EmbeddingRequest {
     embeddings: Vec<Embedding>,
-    //options: Option<Vec<HashMap<String, String>>>,
+    //options: Option<<HashMap<String, String>>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
