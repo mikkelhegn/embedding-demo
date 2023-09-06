@@ -71,6 +71,7 @@ dependencies = [
  "log",
  "serde",
  "serde_json",
+ "serde_qs",
  "spin-sdk",
 ]
 
@@ -366,6 +367,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde_qs"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0431a35568651e363364210c91983c1da5eb29404d9f0928b67d4ebcfa7d330c"
+dependencies = [
+ "percent-encoding",
+ "serde",
+ "thiserror",
+]
+
+[[package]]
 name = "smartcow"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -388,7 +400,7 @@ dependencies = [
 [[package]]
 name = "spin-macro"
 version = "0.1.0"
-source = "git+https://github.com/fermyon/spin?tag=v1.4.1#e0bd9115fa51399e106681ac1c9ed1afbad1baaa"
+source = "git+https://github.com/fermyon/spin?branch=llm-sdk#ca520925df9dd57524041a0cecbed704341253a9"
 dependencies = [
  "anyhow",
  "bytes",
@@ -400,8 +412,8 @@ dependencies = [
 
 [[package]]
 name = "spin-sdk"
-version = "1.4.1"
-source = "git+https://github.com/fermyon/spin?tag=v1.4.1#e0bd9115fa51399e106681ac1c9ed1afbad1baaa"
+version = "1.5.0-pre0"
+source = "git+https://github.com/fermyon/spin?branch=llm-sdk#ca520925df9dd57524041a0cecbed704341253a9"
 dependencies = [
  "anyhow",
  "bytes",
