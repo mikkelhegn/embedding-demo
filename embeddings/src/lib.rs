@@ -1,5 +1,4 @@
 use anyhow::{Context, Result};
-use env_logger;
 use log::{info, trace, LevelFilter::Info};
 use serde::{Deserialize, Serialize};
 use serde_json::*;
@@ -12,6 +11,7 @@ use spin_sdk::{
 
 #[http_component]
 fn handle_embeddings(req: Request) -> Result<Response> {
+    // Make the level configurable
     env_logger::builder()
         .filter_level(Info)
         .init();
@@ -73,7 +73,7 @@ fn create_embeddings(req: Request, _params: Params) -> Result<Response> {
     let embedding_request: EmbeddingRequest = serde_json::from_slice(
         req.body()
             .as_ref()
-            .map(|b| -> &[u8] { &*b })
+            .map(|b| -> &[u8] { b })
             .unwrap_or_default(),
     )
     .unwrap();
@@ -93,9 +93,9 @@ fn delete_embeddings(_req: Request, params: Params) -> Result<Response> {
     let query_params = [sqlite::ValueParam::Integer(
         params.get("id").unwrap().parse().unwrap(),
     )];
-    conn.execute("DELETE FROM embeddings WHERE id = (?)", &query_params);
+    let _ = conn.execute("DELETE FROM embeddings WHERE id = (?)", &query_params);
 
-    // Report appropiate statuscode - e.g., if delete fails
+    // Report appropriate status code - e.g., if delete fails
     Ok(http::Response::builder()
         .status(http::StatusCode::OK)
         .body(None)
@@ -146,11 +146,8 @@ impl<'a> TryFrom<sqlite::Row<'a>> for Embedding {
             .get::<&str>("reference")
             .context("reference column is empty")?;
         let text = row.get::<&str>("text").context("text column is empty")?;
-        let embedding: Vec<f32>;
-        match row.get::<&ValueResult>("embedding").unwrap() {
-            ValueResult::Blob(b) => {
-                embedding = serde_json::from_value(serde_json::from_slice(b.as_slice()).unwrap())?;
-            }
+        let embedding: Vec<f32> = match row.get::<&ValueResult>("embedding").unwrap() {
+            ValueResult::Blob(b) => serde_json::from_value(serde_json::from_slice(b.as_slice()).unwrap())?,
             _ => todo!(),
         };
         Ok(Self {
@@ -217,25 +214,25 @@ struct Embedding {
     embedding: Option<Vec<f32>>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Deserialize)]
 struct EmbeddingRequest {
     embeddings: Vec<Embedding>,
     //options: Option<<HashMap<String, String>>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Deserialize)]
 struct Query {
     text: String,
     //options: Option<HashMap<String, String>>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Serialize)]
 struct SimilarityResultSet {
     text: String,
     results: Vec<SimilarityResult>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Serialize)]
 struct SimilarityResult {
     embedding: Embedding,
     similarity: f32,
