@@ -260,14 +260,10 @@
                 const text = document.getElementById("text").value;
 
                 // Create the JSON object
-                const jsonData = {
-                    "embeddings": [
-                        {
-                            "reference": reference,
-                            "text": text
-                        }
-                    ]
-                };
+                const jsonData = [{
+			"reference": reference,
+                        "text": text
+		}];
 
                 // Convert the JSON object to a JSON string
                 const jsonString = JSON.stringify(jsonData);

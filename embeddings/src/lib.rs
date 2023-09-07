@@ -11,10 +11,7 @@ use spin_sdk::{
 
 #[http_component]
 fn handle_embeddings(req: Request) -> Result<Response> {
-    // Make the level configurable
-    env_logger::builder()
-        .filter_level(Info)
-        .init();
+    env_logger::builder().filter_level(Info).init();
 
     info!(
         "Received {} request at {}",
@@ -38,20 +35,18 @@ fn handle_embeddings(req: Request) -> Result<Response> {
 }
 
 fn get_embeddings(req: Request, _params: Params) -> Result<Response> {
-    match req.uri().query().is_some() {
-        true => {
-            let query = serde_qs::from_str(req.uri().query().unwrap_or_default()).unwrap();
-
-            let result_set = get_similar(query);
+    match req.uri().query() {
+        Some(query) => {
+            let query: Query = serde_qs::from_str(query)?;
+            let text = vec![query.text.as_str()];
+            let result_set = get_similar(text)?;
 
             Ok(http::Response::builder()
                 .status(http::StatusCode::OK)
                 .header("Content-Type", "application/json")
-                .body(Some(serde_json::to_vec(&result_set.unwrap())?.into()))
-                .unwrap())
+                .body(Some(serde_json::to_vec(&result_set)?.into()))?)
         }
-        false => {
-            info!("In else");
+        None => {
             let query = "SELECT * FROM embeddings";
             let conn = Connection::open_default()?;
             let embedding_records: Vec<Embedding> = conn
@@ -63,24 +58,28 @@ fn get_embeddings(req: Request, _params: Params) -> Result<Response> {
             trace!("Rows: {:?}", embedding_records);
             Ok(http::Response::builder()
                 .status(http::StatusCode::OK)
-                .body(Some(serde_json::to_string(&embedding_records)?.into()))
-                .unwrap())
+                .body(Some(serde_json::to_string(&embedding_records)?.into()))?)
         }
     }
 }
 
 fn create_embeddings(req: Request, _params: Params) -> Result<Response> {
-    let embedding_request: EmbeddingRequest = serde_json::from_slice(
+    let embedding_request: Vec<Embedding> = serde_json::from_slice(
         req.body()
-            .as_ref()
+            .as_deref()
             .map(|b| -> &[u8] { b })
             .unwrap_or_default(),
     )
     .unwrap();
 
-    let embeddings = generate_and_store_embedding(embedding_request);
-
-    trace!("Result: {:?}", embeddings);
+    match generate_and_store_embedding(embedding_request) {
+        Ok(num_rec) => {
+            info!("Stored {:?} records", num_rec);
+        }
+        Err(e) => {
+            trace!("Failed to store record: {:?}", e);
+        }
+    };
 
     Ok(http::Response::builder()
         .status(http::StatusCode::CREATED)
@@ -89,65 +88,59 @@ fn create_embeddings(req: Request, _params: Params) -> Result<Response> {
 }
 
 fn delete_embeddings(_req: Request, params: Params) -> Result<Response> {
-    let conn = Connection::open_default()?;
-    let query_params = [sqlite::ValueParam::Integer(
-        params.get("id").unwrap().parse().unwrap(),
-    )];
-    let _ = conn.execute("DELETE FROM embeddings WHERE id = (?)", &query_params);
+    let status = match params.get("id") {
+        Some(id) => {
+            let query_params = [sqlite::ValueParam::Integer(id.parse()?)];
+            let conn = Connection::open_default()?;
+            let _ = conn.execute("DELETE FROM embeddings WHERE id = (?)", &query_params);
+            http::StatusCode::OK
+        }
+        None => http::StatusCode::NOT_FOUND,
+    };
 
-    // Report appropriate status code - e.g., if delete fails
-    Ok(http::Response::builder()
-        .status(http::StatusCode::OK)
-        .body(None)
-        .unwrap())
+    Ok(http::Response::builder().status(status).body(None)?)
 }
 
-fn generate_and_store_embedding(embedding_req: EmbeddingRequest) -> Result<Vec<Embedding>> {
-    let mut embeddings = embedding_req.embeddings;
-    let text: Vec<&str> = embeddings.iter().map(|t| t.text.as_str()).collect();
-    let embedding_result = generate_embeddings(AllMiniLmL6V2, &text[..]).unwrap();
+fn generate_and_store_embedding(embedding_request: Vec<Embedding>) -> Result<usize> {
+    let text: Vec<&str> = embedding_request.iter().map(|e| e.text.as_str()).collect();
+    let embedding_result = generate_embeddings(AllMiniLmL6V2, &text)?;
 
     trace!("Generated embeddings: {:?}", embedding_result);
 
     let conn = Connection::open_default()?;
 
-    for (i, e) in embeddings.iter_mut().enumerate() {
-        if let Some(embedding) = embedding_result.embeddings.get(i) {
-            e.embedding = Some(embedding.clone());
+    for (e, res) in embedding_request.iter().zip(embedding_result.embeddings) {
+        let vec = json!(res.clone());
+        let blob = serde_json::to_vec(&vec)?;
 
-            let vec = json!(e.embedding);
-            let blob = serde_json::to_vec(&vec)?;
+        let query_params = [
+            sqlite::ValueParam::Text(e.reference.as_deref().unwrap_or_default()),
+            sqlite::ValueParam::Text(e.text.as_str()),
+            sqlite::ValueParam::Blob(blob.as_slice()),
+        ];
 
-            let query_params = [
-                sqlite::ValueParam::Text(e.reference.as_deref().unwrap_or_default()),
-                sqlite::ValueParam::Text(e.text.as_str()),
-                sqlite::ValueParam::Blob(blob.as_slice()),
-            ];
-
-            let result = conn.execute(
-                "INSERT INTO embeddings ('reference', 'text', 'embedding') VALUES (?, ?, ?);",
-                &query_params,
-            );
-
-            trace!("Result: {:?}", result);
-        }
+        let _ = conn.execute(
+            "INSERT INTO embeddings ('reference', 'text', 'embedding') VALUES (?, ?, ?);",
+            &query_params,
+        );
     }
-    // Some error handling needed...
-    Ok(embeddings)
+
+    Ok(embedding_request.len())
 }
 
 impl<'a> TryFrom<sqlite::Row<'a>> for Embedding {
     type Error = anyhow::Error;
 
     fn try_from(row: sqlite::Row<'a>) -> std::result::Result<Self, Self::Error> {
-        // TODO: Fix unwraps()
-        let id = Some(row.get::<u32>("id").unwrap());
+        let id = Some(row.get::<u32>("id").unwrap_or_default());
         let reference = row
             .get::<&str>("reference")
             .context("reference column is empty")?;
         let text = row.get::<&str>("text").context("text column is empty")?;
         let embedding: Vec<f32> = match row.get::<&ValueResult>("embedding").unwrap() {
-            ValueResult::Blob(b) => serde_json::from_value(serde_json::from_slice(b.as_slice()).unwrap())?,
+            ValueResult::Blob(b) => {
+                serde_json::from_value(serde_json::from_slice(b.as_slice()).unwrap_or_default())?
+            }
             _ => todo!(),
         };
         Ok(Self {
@@ -159,9 +152,7 @@ impl<'a> TryFrom<sqlite::Row<'a>> for Embedding {
     }
 }
 
-fn get_similar(query: Query) -> Result<SimilarityResultSet> {
-    let text: Vec<&str> = vec![query.text.as_str()];
-    let embedding = generate_embeddings(AllMiniLmL6V2, &text[..]);
+fn get_similar(query: Vec<&str>) -> Result<SimilarityResultSet> {
     let sql_query = "SELECT * FROM embeddings";
     let conn = Connection::open_default()?;
     let embedding_records: Vec<Embedding> = conn
@@ -169,29 +160,28 @@ fn get_similar(query: Query) -> Result<SimilarityResultSet> {
         .rows()
         .map(|row| -> anyhow::Result<Embedding> { row.try_into() })
         .collect::<anyhow::Result<Vec<Embedding>>>()?;
-
+    info!("String to compare: {:?}", query[0].to_string());
     let mut result_set = SimilarityResultSet {
-        text: query.text.to_string(),
+        text: query[0].to_string(),
         results: Vec::new(),
     };
+    let embedding_result = generate_embeddings(AllMiniLmL6V2, &query);
 
-    for e in embedding_records.iter() {
-        let similarity = cosine_similarity(
-            &e.embedding.clone().unwrap(),
-            embedding.clone().unwrap().embeddings.get(0).unwrap(),
-        );
-        let mut result = SimilarityResult {
-            similarity,
-            embedding: e.clone(),
-        };
-        result.embedding.embedding = None;
-        result_set.results.push(result);
+    if let Some(embedding_to_compare) = embedding_result?.embeddings.get(0) {
+        for e in embedding_records.into_iter() {
+            let similarity = cosine_similarity(e.embedding.as_ref().unwrap(), embedding_to_compare);
+            let mut result = SimilarityResult {
+                similarity,
+                embedding: e,
+            };
+            result.embedding.embedding = None;
+            result_set.results.push(result);
+        }
+
+        result_set
+            .results
+            .sort_by(|a, b| b.similarity.partial_cmp(&a.similarity).unwrap());
     }
-
-    result_set
-        .results
-        .sort_by(|a, b| b.similarity.partial_cmp(&a.similarity).unwrap());
-
     Ok(result_set)
 }
 
@@ -214,18 +204,6 @@ struct Embedding {
     embedding: Option<Vec<f32>>,
 }
 
-#[derive(Deserialize)]
-struct EmbeddingRequest {
-    embeddings: Vec<Embedding>,
-    //options: Option<<HashMap<String, String>>,
-}
-
-#[derive(Deserialize)]
-struct Query {
-    text: String,
-    //options: Option<HashMap<String, String>>,
-}
-
 #[derive(Serialize)]
 struct SimilarityResultSet {
     text: String,
@@ -236,4 +214,9 @@ struct SimilarityResultSet {
 struct SimilarityResult {
     embedding: Embedding,
     similarity: f32,
+}
+
+#[derive(Deserialize)]
+struct Query {
+    text: String,
 }
