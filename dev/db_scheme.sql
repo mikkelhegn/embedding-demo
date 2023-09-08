@@ -1,6 +1,5 @@
-CREATE TABLE IF NOT EXISTS embeddings (
-	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	reference TEXT,
+CREATE TABLE IF NOT EXISTS paragraphs (
+	reference TEXT PRIMARY KEY,
 	text TEXT,
 	embedding BLOB 
 )

@@ -167,7 +167,7 @@
                 const userInput = textInput.value;
 
                 // Replace 'your-api-url' with the actual API endpoint
-                const apiUrl = `/embeddings?text=${encodeURIComponent(userInput)}`;
+                const apiUrl = `/embeddings?sentence=${encodeURIComponent(userInput)}`;
 
                 // Create the request object
                 const requestObject = {
@@ -187,16 +187,16 @@
                         if (data.results) {
                             // Iterate through the API response data and populate the table
                             data.results.forEach(result => {
-                                const embedding = result.embedding;
+                                const paragraph = result.paragraph;
 
-                                if (embedding) {
+                                if (paragraph) {
                                     const row = document.createElement("tr");
                                     const referenceCell = document.createElement("td");
                                     const textCell = document.createElement("td");
                                     const similarityCell = document.createElement("td");
 
-                                    referenceCell.textContent = embedding.reference;
-                                    textCell.textContent = embedding.text;
+                                    referenceCell.textContent = paragraph.reference;
+                                    textCell.textContent = paragraph.text;
                                     similarityCell.textContent = result.similarity;
 
                                     row.appendChild(referenceCell);
