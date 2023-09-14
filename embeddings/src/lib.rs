@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use log::{info, trace, LevelFilter::Info, error};
+use log::{error, info, trace, LevelFilter::Info};
 use serde::{Deserialize, Serialize};
 use serde_json::*;
 use spin_sdk::{
@@ -52,18 +52,19 @@ fn get_paragraphs(req: Request, _params: Params) -> Result<Response> {
                 .execute(query, &[])?
                 .rows()
                 .map(|row| -> anyhow::Result<Paragraph> { row.try_into() })
-                .collect::<anyhow::Result<Vec<Paragraph>>>() {
-                    Ok(p) => {
-                        trace!("All paragraphs: {:?}", p);
-                        p
-                    }
-                    Err(err) => {
-                        error!("Error getting paragraphs from db: {:?}", err);
-                        return Ok(http::Response::builder()
-                            .status(http::StatusCode::INTERNAL_SERVER_ERROR)
-                            .body(Some("Failed to get records".into()))?)
-                    }
-                };
+                .collect::<anyhow::Result<Vec<Paragraph>>>()
+            {
+                Ok(p) => {
+                    trace!("All paragraphs: {:?}", p);
+                    p
+                }
+                Err(err) => {
+                    error!("Error getting paragraphs from db: {:?}", err);
+                    return Ok(http::Response::builder()
+                        .status(http::StatusCode::INTERNAL_SERVER_ERROR)
+                        .body(Some("Failed to get records".into()))?);
+                }
+            };
 
             Ok(http::Response::builder()
                 .status(http::StatusCode::OK)
@@ -74,15 +75,16 @@ fn get_paragraphs(req: Request, _params: Params) -> Result<Response> {
 
 fn create_paragraphs_records(req: Request, _params: Params) -> Result<Response> {
     let paragraphs: Vec<Paragraph> = match serde_json::from_slice(
-            req.body()
-                .as_deref()
-                .map(|b| -> &[u8] { b })
-                .unwrap_or_default()) {
+        req.body()
+            .as_deref()
+            .map(|b| -> &[u8] { b })
+            .unwrap_or_default(),
+    ) {
         Ok(vec) => vec,
         Err(err) => {
             error!("Failed to serialize paragraphs");
-            return Err(err.into())
-        },
+            return Err(err.into());
+        }
     };
 
     let text: Vec<&str> = paragraphs.iter().map(|e| e.text.as_str()).collect();
@@ -90,9 +92,12 @@ fn create_paragraphs_records(req: Request, _params: Params) -> Result<Response> 
         Ok(er) => {
             trace!("Generated embeddings: {:?}", er);
             er
-        },
-        Err(err) => { 
-            error!("Failed to generate embeddings when calling Spin llm: {:?}", err);
+        }
+        Err(err) => {
+            error!(
+                "Failed to generate embeddings when calling Spin llm: {:?}",
+                err
+            );
             return Err(err.into());
         }
     };
@@ -101,19 +106,22 @@ fn create_paragraphs_records(req: Request, _params: Params) -> Result<Response> 
         Ok(num_rec) => {
             info!("Generated {:?} embeddings", num_rec);
             Ok(http::Response::builder()
-            .status(http::StatusCode::CREATED)
-            .body(Some(format!("Stored {:?} records", num_rec).into()))?)
+                .status(http::StatusCode::CREATED)
+                .body(Some(format!("Stored {:?} records", num_rec).into()))?)
         }
         Err(err) => {
             error!("Failed to store records: {:?}", err);
             Ok(http::Response::builder()
-            .status(http::StatusCode::INTERNAL_SERVER_ERROR)
-            .body(Some("Failed to store records".into()))?)
+                .status(http::StatusCode::INTERNAL_SERVER_ERROR)
+                .body(Some("Failed to store records".into()))?)
         }
     }
 }
 
-fn store_paragraph_records(paragraphs: Vec<Paragraph>, embedding_result: EmbeddingsResult) -> Result<usize> {
+fn store_paragraph_records(
+    paragraphs: Vec<Paragraph>,
+    embedding_result: EmbeddingsResult,
+) -> Result<usize> {
     let conn = Connection::open_default()?;
 
     for (e, res) in paragraphs.iter().zip(embedding_result.embeddings) {
@@ -140,7 +148,10 @@ fn delete_paragraph_record(_req: Request, params: Params) -> Result<Response> {
         Some(reference) => {
             let query_params = [sqlite::ValueParam::Text(reference)];
             let conn = Connection::open_default()?;
-            let _ = conn.execute("DELETE FROM paragraphs WHERE reference = (?)", &query_params);
+            let _ = conn.execute(
+                "DELETE FROM paragraphs WHERE reference = (?)",
+                &query_params,
+            );
             info!("Deleted one record");
             http::StatusCode::OK
         }
@@ -156,26 +167,29 @@ fn get_similar_paragraphs(sentence: &str) -> Result<SimilarityResultSet> {
     let embedded_sentence: Vec<f32> = match generate_embeddings(AllMiniLmL6V2, &[sentence]) {
         Ok(er) => {
             trace!("Generated embeddings: {:?}", er);
-            er.embeddings.get(0).unwrap().to_vec()
-        },
-        Err(err) => { 
-            error!("Failed to generate embeddings when calling Spin llm: {:?}", err);
-            return Err(err.into())
+            er.embeddings.get(0).expect("Embeddings results should always be populated").to_vec()
+        }
+        Err(err) => {
+            error!(
+                "Failed to generate embeddings when calling Spin llm: {:?}",
+                err
+            );
+            return Err(err.into());
         }
     };
 
-    let mut results: Vec<SimilarityResult> = paragraphs.into_iter().map(|p|  SimilarityResult {
-                similarity: cosine_similarity(p.embedding.as_ref(), embedded_sentence.as_ref()),
-                paragraph: Paragraph {
-                    reference: p.reference,
-                    text: p.text,
-                }
-            })
-            .collect();
+    let mut results: Vec<SimilarityResult> = paragraphs
+        .into_iter()
+        .map(|p| SimilarityResult {
+            similarity: cosine_similarity(p.embedding.as_ref(), embedded_sentence.as_ref()),
+            paragraph: Paragraph {
+                reference: p.reference,
+                text: p.text,
+            },
+        })
+        .collect();
 
-    results.sort_by(|a, b| {
-        b.similarity.partial_cmp(&a.similarity).unwrap()
-    });
+    results.sort_by(|a, b| b.similarity.partial_cmp(&a.similarity).unwrap());
 
     let similarity_results = SimilarityResultSet {
         sentence: sentence.to_string(),
@@ -191,15 +205,14 @@ fn get_compare_set() -> Result<Vec<ParagraphRecord>> {
         .execute(sql_query, &[])?
         .rows()
         .map(|row| -> anyhow::Result<ParagraphRecord> { row.try_into() })
-        .collect::<anyhow::Result<Vec<ParagraphRecord>>>() {
-            Ok(er) => {
-                Ok(er)
-            },
-            Err(err) => {
-                error!("Failed to get paragraphs to compare with");
-                Err(err)
-            },
+        .collect::<anyhow::Result<Vec<ParagraphRecord>>>()
+    {
+        Ok(er) => Ok(er),
+        Err(err) => {
+            error!("Failed to get paragraphs to compare with");
+            Err(err)
         }
+    }
 }
 
 fn cosine_similarity(vec1: &[f32], vec2: &[f32]) -> f32 {
