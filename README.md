@@ -10,7 +10,7 @@ This is built ion the Serverless AI features in Spin and Fermyon Cloud.
 
 The repo contains a small client front-end to try the functionality.
 
-Make sure to run the `./dev/db_scheme.sql` to create the required schema in the database. I.e. `spin up --sqlite @dev/db_scheme.sql`
+Make sure to run the `./dev/db_schema.sql` to create the required schema in the database. I.e. `spin up --sqlite @dev/db_schema.sql`
 
 ## API
 
@@ -57,7 +57,7 @@ Returns
 		{
 			"reference": "Doc A",
 			"text": "Text",
-            "similarity": 0.454 // 1 is absolute similarity
+            		"similarity": 0.454 // 1 is absolute similarity
 		}
 	]
 }
