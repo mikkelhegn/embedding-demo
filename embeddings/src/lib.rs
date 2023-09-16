@@ -135,7 +135,7 @@ fn store_paragraph_records(
         ];
 
         let _ = conn.execute(
-            "INSERT INTO embeddings ('reference', 'text', 'embedding') VALUES (?, ?, ?);",
+            "INSERT INTO paragraphs ('reference', 'text', 'embedding') VALUES (?, ?, ?);",
             &query_params,
         );
     }
@@ -167,7 +167,10 @@ fn get_similar_paragraphs(sentence: &str) -> Result<SimilarityResultSet> {
     let embedded_sentence: Vec<f32> = match generate_embeddings(AllMiniLmL6V2, &[sentence]) {
         Ok(er) => {
             trace!("Generated embeddings: {:?}", er);
-            er.embeddings.get(0).expect("Embeddings results should always be populated").to_vec()
+            er.embeddings
+                .get(0)
+                .expect("Embeddings results should always be populated")
+                .to_vec()
         }
         Err(err) => {
             error!(
@@ -200,7 +203,7 @@ fn get_similar_paragraphs(sentence: &str) -> Result<SimilarityResultSet> {
 }
 
 fn get_compare_set() -> Result<Vec<ParagraphRecord>> {
-    let sql_query = "SELECT * FROM embeddings";
+    let sql_query = "SELECT * FROM paragraphs";
     match Connection::open_default()?
         .execute(sql_query, &[])?
         .rows()
